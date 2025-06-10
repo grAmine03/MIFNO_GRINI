@@ -171,3 +171,4 @@ class MIFNO_3D(nn.Module):
         grid3 = grid3.reshape(1, 1, 1, size3, 1).repeat(
             [batchsize, size1, size2, 1, 1])
         return torch.cat((grid1, grid2, grid3), dim=-1).to(device)
+        

@@ -91,7 +91,7 @@ def norm_constant_distance_Vs(s, a, S_in=32, S_in_z=32, Dx=9600, Dy=9600, Dz=960
 
 
 class GeologyTracesSourceDataset(Dataset):
-    def __init__(self, dir_data, T_out=320, S_in=32, S_in_z=32, S_out=32, 
+    def __init__(self,path_data, dir_data, T_out=320, S_in=32, S_in_z=32, S_out=32, 
                  transform_a='normal', N=None, orientation=None,
                  transform_angle=None, transform_position=None, transform_traces=None):
         ''' 
@@ -107,6 +107,7 @@ class GeologyTracesSourceDataset(Dataset):
         transform_traces: string (None or "distance_traces"): normalization method for traces
         orientation: string (None, "angle" or "moment"): indicates the orientation of the source
         '''
+        self.path_data = path_data
         self.dir_data = dir_data
         self.T_out = T_out
         self.S_in = S_in
@@ -118,8 +119,8 @@ class GeologyTracesSourceDataset(Dataset):
         self.transform_traces = transform_traces
         self.orientation = orientation
 
-        a_mean = np.load(dir_data[0] + '/a_mean.npy')
-        a_std = np.load(dir_data[0] + '/a_std.npy')
+        a_mean = np.load(path_data + dir_data[0] + '/a_mean.npy')
+        a_std = np.load(path_data + dir_data[0] + '/a_std.npy')
 
         if self.transform_a == 'scalar_normal':
             self.a_mean = np.mean(a_mean)
@@ -134,17 +135,12 @@ class GeologyTracesSourceDataset(Dataset):
         # list of all files
         self.all_files = []
         for indiv_dir_data in dir_data:
-            l = os.listdir(indiv_dir_data)
+            l = os.listdir(self.path_data + indiv_dir_data)
             l = [item for item in l if item[:6] == 'sample']
             if len(l) == 0:
-                raise Exception(f"folder {indiv_dir_data} is empty")
+                raise Exception(f"folder {self.path_data + indiv_dir_data} is empty")
             l = sorted(l, key=lambda s: int(re.search(r'\d+', s).group()))
-            self.all_files += [indiv_dir_data+'/'+li for li in l]
-
-        # sort by index of samples (default sort groups by dir_data name first, and then sample index -> pb for rotations)
-        list_numbers = [item[item.find('sample')+6:-3] for item in self.all_files]
-        sorted_numbers = np.argsort(list_numbers)
-        self.all_files = list(np.array(self.all_files)[sorted_numbers])
+            self.all_files += [self.path_data+indiv_dir_data+'/'+li for li in l]
 
         if N is not None:
             self.all_files = self.all_files[:N]

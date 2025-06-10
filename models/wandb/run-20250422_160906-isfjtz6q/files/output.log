@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "C:\Users\pagki\Documents\Stage_M1_LMPS\MIFNO\models\train_lightning_fixed.py", line 265, in <module>
+    train_data = GeologyTracesSourceMaskDataset(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\pagki\Documents\Stage_M1_LMPS\MIFNO\models\data_loader.py", line 84, in __init__
+    a_mean = np.load( path_data + dir_data[0] + '/a_mean.npy')
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\pagki\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\numpy\lib\_npyio_impl.py", line 459, in load
+    fid = stack.enter_context(open(os.fspath(file), "rb"))
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: './data/formatted/HEMEWS3D_S32_Z32_T320_fmax5_rot0_train/a_mean.npy'
