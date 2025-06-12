@@ -1,0 +1,61 @@
+options: !!python/object:argparse.Namespace
+  Ntrain: 27000
+  Nval: 3000
+  S_in: 32
+  S_in_z: 32
+  S_out: 32
+  T_out: 320
+  additional_name: ''
+  batch_size: 1
+  branching_index: 2
+  dir_data_train:
+  - ../data/formatted/HEMEWS3D_S32_Z32_T320_fmax5_rot0_train
+  dir_data_val:
+  - ../data/formatted/HEMEWS3D_S32_Z32_T320_fmax5_rot0_val
+  dir_logs: ../logs/
+  dv: 8
+  epochs: 350
+  learning_rate: 0.0006
+  list_D1:
+  - 32
+  - 32
+  - 32
+  - 32
+  list_D2:
+  - 32
+  - 32
+  - 32
+  - 32
+  list_D3:
+  - 32
+  - 32
+  - 32
+  - 320
+  list_M1:
+  - 8
+  - 8
+  - 8
+  - 8
+  list_M2:
+  - 8
+  - 8
+  - 8
+  - 8
+  list_M3:
+  - 8
+  - 8
+  - 8
+  - 8
+  list_dv: null
+  loss_weights:
+  - 1.0
+  - 0.0
+  model_type: MIFNO
+  nlayers: 4
+  normalize_source: false
+  normalize_traces: false
+  padding: 0
+  restart_model: ''
+  seed: 0
+  source_orientation: angle
+  start_epoch: 0
