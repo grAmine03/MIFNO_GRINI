@@ -16,7 +16,6 @@ import random
 import io # Add io import
 from PIL import Image # Add PIL import
 import os
-#test
 from utils_models import get_device, get_batch_size, loss_criterion, RunningAverage
 from ffno_model import FFNO_3D
 from mifno_model import MIFNO_3D
