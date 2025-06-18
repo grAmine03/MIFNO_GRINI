@@ -381,8 +381,8 @@ if __name__ == '__main__':
     name_config += options.additional_name
     
     train_data = GeologyTracesSourceMaskDataset(
-    #path_data=' /gpfs/workdir/shared/hemews3d/formatted/',
-    path_data='./data/formatted/',
+    path_data='/lustre/fsstor/projects/rech/xvy/upz57sx/hemews3d/formatted/',
+    #path_data='./data/formatted/',
     dir_data=options.dir_data_train,
     S_in=options.S_in,
     S_in_z=options.S_in_z,
@@ -397,8 +397,8 @@ if __name__ == '__main__':
     )
 
     val_data = GeologyTracesSourceMaskDataset(
-    #path_data=' /gpfs/workdir/shared/hemews3d/formatted/',
-    path_data='./data/formatted/',
+    path_data='/lustre/fsstor/projects/rech/xvy/upz57sx/hemews3d/formatted/',
+    #path_data='./data/formatted/',
     dir_data=options.dir_data_val,
     S_in=options.S_in,
     S_in_z=options.S_in_z,
@@ -611,4 +611,3 @@ if __name__ == '__main__':
     print("Plotting complete.")
     wandb.finish() # Ensure Wandb run finishes after logging plots
 
-#test
