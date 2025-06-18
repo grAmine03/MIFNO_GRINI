@@ -136,7 +136,7 @@ class GeologyTracesSourceMaskDataset(Dataset):
         xmax_grid = random.uniform(xmin_grid, 2*self.transform_position[0])  # Ensure xmax > xmin
         ymax_grid = random.uniform(ymin_grid, 2*self.transform_position[1])  # Ensure ymax > ymin
         '''
-        '''
+        
         x_bound = int(2 * self.transform_position[0])
         y_bound = int(2 * self.transform_position[1])
 
@@ -149,21 +149,22 @@ class GeologyTracesSourceMaskDataset(Dataset):
 
         # Randomly select ymin and ymax such that ymin < ymax
         ymin_grid, ymax_grid = sorted(random.sample(y_vals, 2))
-        
+        '''
         xmin = self.mask.loc[idx, 'xmin']
         ymin = self.mask.loc[idx, 'ymin']
         '''
         # normalized mask for the grid position
-        '''
-        xmin_grid = xmin/self.transform_position[0]
-        ymin_grid = ymin/self.transform_position[1]
-        xmax_grid = self.mask.loc[idx, 'xmax']/self.transform_position[0]
-        ymax_grid = self.mask.loc[idx, 'ymax']/self.transform_position[0]
+        
+        xmin_grid = xmin_grid/self.transform_position[0]
+        ymin_grid = ymin_grid/self.transform_position[1]
+        xmax_grid = xmax_grid/self.transform_position[0]
+        ymax_grid = ymax_grid/self.transform_position[1]
         '''
         xmin_grid = 0
         ymin_grid = 0
         xmax_grid = 9600
         ymax_grid = 9600
+        '''
         grid_bounds = np.array([xmin_grid, ymin_grid, xmax_grid, ymax_grid], dtype=np.float32)
         print(f"Grid bounds: {grid_bounds}")
         if 's' in f.keys():

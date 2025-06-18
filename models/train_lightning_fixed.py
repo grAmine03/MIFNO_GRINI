@@ -346,7 +346,7 @@ def plot_comparison_time_vs_x(truth_slice, pred_slice, time_vec, x_coord_vec, ti
                               extent=[time_vec[0], time_vec[-1], x_coord_vec[0], x_coord_vec[-1]],
                               vmin=vmin, vmax=vmax)
     axes[0].set_xlabel('Time (s)')
-    axes[0].set_ylabel('X-coordinate (km)')
+    axes[0].set_ylabel('X-coordinate (m)')
     axes[0].set_title(f"{title_prefix} - Ground Truth")
 
     # Plot Prediction
