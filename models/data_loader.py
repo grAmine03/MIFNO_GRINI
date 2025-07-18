@@ -136,37 +136,51 @@ class GeologyTracesSourceMaskDataset(Dataset):
         xmax_grid = random.uniform(xmin_grid, 2*self.transform_position[0])  # Ensure xmax > xmin
         ymax_grid = random.uniform(ymin_grid, 2*self.transform_position[1])  # Ensure ymax > ymin
         '''
-        
+        '''
         x_bound = int(2 * self.transform_position[0])
         y_bound = int(2 * self.transform_position[1])
+        z_bound = int(2 * self.transform_position[2])
 
         # Generate all possible multiples of 300 within the bounds
         x_vals = list(range(0, x_bound + 1, 300))
         y_vals = list(range(0, y_bound + 1, 300))
+        z_vals = list(range(0, z_bound + 1, 300))
 
         # Randomly select xmin and xmax such that xmin < xmax
         xmin_grid, xmax_grid = sorted(random.sample(x_vals, 2))
 
         # Randomly select ymin and ymax such that ymin < ymax
         ymin_grid, ymax_grid = sorted(random.sample(y_vals, 2))
+        
+        # Randomly select zmin and zmax such that zmin < zmax
+        zmin_grid, zmax_grid = sorted(random.sample(z_vals, 2))
+        '''
         '''
         xmin = self.mask.loc[idx, 'xmin']
         ymin = self.mask.loc[idx, 'ymin']
+        
         '''
+    
+        xmin_grid = 0
+        ymin_grid = 0
+        xmax_grid = 9600
+        ymax_grid = 9600
+        
         # normalized mask for the grid position
         
         xmin_grid = xmin_grid/self.transform_position[0]
         ymin_grid = ymin_grid/self.transform_position[1]
         xmax_grid = xmax_grid/self.transform_position[0]
-        ymax_grid = ymax_grid/self.transform_position[1]
-        '''
-        xmin_grid = 0
-        ymin_grid = 0
-        xmax_grid = 9600
-        ymax_grid = 9600
-        '''
-        grid_bounds = np.array([xmin_grid, ymin_grid, xmax_grid, ymax_grid], dtype=np.float32)
-        print(f"Grid bounds: {grid_bounds}")
+        ymax_grid = ymax_grid/self.transform_position[0]
+        
+
+        
+        tmin_grid = 0
+        tmax_grid = 320
+        grid_bounds = (xmin_grid, ymin_grid, tmin_grid, xmax_grid, ymax_grid, tmax_grid)
+        print(f'\n \nin data loader: idx={idx}')
+        print(f'in data loader: xmin_grid={xmin_grid:.3f}, ymin_grid={ymin_grid:.3f}, xmax_grid={xmax_grid:.3f}, ymax_grid={ymax_grid:.3f}')
+        
         if 's' in f.keys():
             s_raw = f['s'][:]
         else:
@@ -189,7 +203,8 @@ class GeologyTracesSourceMaskDataset(Dataset):
         else:
             s = s_raw
         s = s.astype(np.float32)
-
+        print(f'in data loader: original source ({f["s"][0]}, {f["s"][1]}, {f["s"][2]}) - normalized source position in mask ({s[0]:.3f}, {s[1]:.3f}, {s[2]:.3f})')
+        
         if self.orientation == 'angle':
             if 'angle' in f.keys():
                 ang = f['angle'][:].astype(np.float32)
@@ -208,6 +223,12 @@ class GeologyTracesSourceMaskDataset(Dataset):
         s = np.expand_dims(s, axis=0)
 
         f.close()
+        '''
+        print (f'uE shape: {uE.shape}, uN shape: {uN.shape}, uZ shape: {uZ.shape}, a shape: {a.shape}, s shape: {s.shape}')
         
+        t0=np.random.randint(0, self.T_out//2)
+        tvec=t0+self.T_out//2
+        print(f't0: {t0}, tvec: {tvec}')
+        return a, uE, uN, uZ, s,(t0,tvec), grid_bounds, norm_cst
+        '''
         return a, uE, uN, uZ, s, grid_bounds, norm_cst
-

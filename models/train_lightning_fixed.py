@@ -22,6 +22,10 @@ from mifno_model import MIFNO_3D
 from maskfno_model import maskMIFNO_3D
 from data_loader import GeologyTracesSourceMaskDataset
 from dataloaders import GeologyTracesSourceDataset
+import idr_torch
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--model_type', type=str, default="maskMIFNO", help="Architecture used: MIFNO or F-FNO")
 parser.add_argument('--S_in', type=int, default=32, help="Size of the spatial input grid")
@@ -50,7 +54,7 @@ parser.add_argument('--learning_rate', type=float, default=0.0006, help='learnin
 parser.add_argument('--loss_weights', type=float, nargs='+', default = [1.0, 0.0], help = "Weight of L1 loss, L2 loss")
 parser.add_argument('--dir_data_train', type=str, nargs='+', default=['HEMEWS3D_S32_Z32_T320_fmax5_rot0_train'], help="Name of folders with training data")
 parser.add_argument('--dir_data_val', type=str, nargs='+', default=['HEMEWS3D_S32_Z32_T320_fmax5_rot0_val'], help="Name of folders with training data")
-parser.add_argument('--dir_logs', type=str, default='../logs/', help="Path to folder to store loss and models")
+parser.add_argument('--dir_logs', type=str, default='/lustre/fsn1/projects/rech/xvy/upz57sx/MIFNO_logs/', help="Path to folder to store loss and models")
 parser.add_argument('--additional_name', type=str, default="", help="string to add to the configuration name for saved outputs")
 parser.add_argument('--restart_model',action='store_true',default=False,help='Start from checkpoint?')
 parser.add_argument('--start_epoch', type=int, default=0, help="Epoch to start, >0 if initializing with a trained model")
@@ -58,22 +62,23 @@ parser.add_argument('--seed', type=int, default=0, help="Seed to initialize pyto
 parser.add_argument('--log_plot_every_n_epochs', type=int, default=10, help="Frequency (in epochs) for logging validation plots") # Add this line
 options = parser.parse_args()
 
-wandb.login()
-'''
-run = wandb.init(
-    project="MaskMIFNO",  # Specify your project
-    config={                        # Track hyperparameters and metadata
-        "learning_rate": options.learning_rate,
-        "epochs": options.epochs,
-    }
-)
-'''
+
+
+
 # Set seeds and deterministic behavior
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(options.seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
+dist.init_process_group(backend='nccl',
+                        init_method='env://',
+                        world_size=idr_torch.size,
+                        rank=idr_torch.rank)
+torch.cuda.set_device(idr_torch.local_rank)
+gpu = torch.device("cuda")
+
+wandb.init()
 
 # LightningModule for the model
 class GeologyModel(LightningModule):
@@ -266,10 +271,11 @@ class GeologyModel(LightningModule):
             # Select one sample and component (e.g., uE)
             output_sample_E = outE[idx].cpu().numpy()
             truth_sample_E = uE_truth[idx].cpu().numpy()
-
+            print(f"output_sample_E: {output_sample_E}, truth_sample_E: {truth_sample_E}")
             # Extract the 2D slice (x_dim, time_dim)
             output_slice_E = output_sample_E[:, y_index, :]
             truth_slice_E = truth_sample_E[:, y_index, :]
+            print(f"output_sample_E: {output_sample_E}, truth_sample_E: {truth_sample_E}")
 
             # --- Plot comparison (truth and prediction) ---
             fig_comparison = plot_comparison_time_vs_x(
@@ -305,7 +311,7 @@ class GeologyModel(LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=options.learning_rate)
-        scheduler = ReduceLROnPlateau(optimizer, 'min', factor=0.5, patience=10, verbose=True)
+        scheduler = ReduceLROnPlateau(optimizer, 'min', factor=0.5, patience=10)
         return {'optimizer': optimizer, 'lr_scheduler': scheduler, 'monitor': 'val_loss'}
 
 def plot_time_vs_x(data_slice, time_vec, x_coord_vec, title="Time vs X-coordinate"):
@@ -370,18 +376,22 @@ if __name__ == '__main__':
     assert options.nlayers == len(options.list_D1)
 
 
-    name_config = f"{options.model_type}3D-{options.source_orientation}-"\
+    name_config = f"JeanZay_RandBounds-"\
+        f"{options.model_type}3D-{options.source_orientation}-"\
         f"dv{options.dv}-{options.nlayers}layers-S{options.S_in}-T{options.T_out}-"\
         f"learningrate{str(options.learning_rate).replace('.','p')}-Ntrain{options.Ntrain}-"\
-            f"batchsize{options.batch_size}"
+            f"batchsize{options.batch_size}-"
     if options.normalize_source:
         name_config += "-normedsource"
     if options.normalize_traces is not None:
         name_config += "-normedtraces"
     name_config += options.additional_name
     
+
+    wandb.login()
+
     train_data = GeologyTracesSourceMaskDataset(
-    path_data='/lustre/fsstor/projects/rech/xvy/upz57sx/hemews3d/formatted/',
+    path_data='/lustre/fsn1/projects/rech/xvy/upz57sx/hemews3d/formatted/',
     #path_data='./data/formatted/',
     dir_data=options.dir_data_train,
     S_in=options.S_in,
@@ -397,7 +407,7 @@ if __name__ == '__main__':
     )
 
     val_data = GeologyTracesSourceMaskDataset(
-    path_data='/lustre/fsstor/projects/rech/xvy/upz57sx/hemews3d/formatted/',
+    path_data='/lustre/fsn1/projects/rech/xvy/upz57sx/hemews3d/formatted/',
     #path_data='./data/formatted/',
     dir_data=options.dir_data_val,
     S_in=options.S_in,
@@ -450,6 +460,7 @@ if __name__ == '__main__':
                                              num_workers=2)
 
     model = GeologyModel(options)
+    model=model.to(gpu) # Ensure model is on the correct device
 
     # Lightning Trainer with DDP Strategy
     '''
@@ -487,18 +498,21 @@ if __name__ == '__main__':
     wandb_logger = WandbLogger(
         project='MaskMIFNO', 
         name=name_config,
-        config=vars(options) # Pass all parsed options to Wandb config
+        config=vars(options), # Pass all parsed options to Wandb config
+        save_dir="/lustre/fsn1/projects/rech/xvy/upz57sx/MIFNO_logs/"
     )
     trainer = Trainer(
         max_epochs=options.epochs,
         accelerator='gpu',
-        devices=torch.cuda.device_count(),
-        strategy=DDPStrategy(find_unused_parameters=True),
+        #strategy=DDP(model,device_ids=[idr_torch.local_rank], find_unused_parameters=True), # Use DDP with the local rank
+        devices= int(os.environ['SLURM_GPUS_ON_NODE']), # Use the number of GPUs available
+        num_nodes=int(os.environ['SLURM_NNODES']),
+        #strategy=DDPStrategy(find_unused_parameters=True),
         #strategy='Auto',
+        strategy='ddp_find_unused_parameters_true',
         callbacks=[modelcheckpoint_callback_regular_step_save,modelcheckpoint_callback_best_val_save, early_stopping],
         logger=wandb_logger,  
     )
-
     
     if options.restart_model:
         print("Restarting from checkpoint...")

@@ -341,7 +341,9 @@ class maskMIFNO_3D(nn.Module):
 
     def forward(self, x, s, grid_bounds):
         ''' x: geology, s: source '''
-        grid = self.get_grid(x.shape, x.device, grid_bounds)
+        grid_bounds_P = grid_bounds[:2] + [0] + grid_bounds[3:4] + [1]
+        print(f'grid_bounds_P: {grid_bounds_P}')
+        grid = self.get_grid(x.shape, x.device, grid_bounds_P)
         #print(fanny)
         x = torch.cat((x, grid), dim=-1)
         x = self.P(x)
@@ -378,6 +380,11 @@ class maskMIFNO_3D(nn.Module):
         
         yf = b
         yf = yf.permute(0, 2, 3, 4, 1)
+
+        grid_bounds_Q = grid_bounds
+        new_grid=self.get_grid(yf.shape, yf.device, grid_bounds_Q)
+        yf = torch.cat((yf, new_grid), dim=-1)
+        
         
         uE = self.QE(yf)
         uN = self.QN(yf)
@@ -385,9 +392,10 @@ class maskMIFNO_3D(nn.Module):
 
         return uE, uN, uZ
 
+    
     def get_grid(self, shape, device, grid_bounds):
         # Assuming grid_bounds might be used later, keeping it for now
-        # xmin_grid, ymin_grid, xmax_grid, ymax_grid = grid_bounds
+        #xmin_grid, ymin_grid, xmax_grid, ymax_grid = grid_bounds
         xmin_grid = 0
         ymin_grid = 0
         xmax_grid = 9600
@@ -413,3 +421,33 @@ class maskMIFNO_3D(nn.Module):
         # Concatenate along the feature dimension
         grid = torch.cat((gridx, gridy, gridz), dim=-1)
         return grid
+    '''
+    def get_grid(self, shape, device, grid_bounds):
+        batchsize, size1, size2, size3 = shape[0], shape[1], shape[2], shape[3]
+        
+        # Create lists to hold the grid for each sample in the batch
+        gridx_list, gridy_list, gridz_list = [], [], []
+
+        # Iterate over each sample in the batch
+        for i in range(batchsize):
+            # Unpack the bounds for the current sample
+            xmin_grid, ymin_grid, xmax_grid, ymax_grid = grid_bounds[i]
+
+            # Create the grid for the current sample
+            _gridx = torch.linspace(xmin_grid, xmax_grid, size1, device=device, dtype=torch.float32)
+            _gridy = torch.linspace(ymin_grid, ymax_grid, size2, device=device, dtype=torch.float32)
+            _gridz = torch.linspace(0, 1, size3, device=device, dtype=torch.float32)
+            
+            # Reshape and append to the lists
+            gridx_list.append(_gridx.reshape(1, size1, 1, 1, 1).repeat([1, 1, size2, size3, 1]))
+            gridy_list.append(_gridy.reshape(1, 1, size2, 1, 1).repeat([1, size1, 1, size3, 1]))
+            gridz_list.append(_gridz.reshape(1, 1, 1, size3, 1).repeat([1, size1, size2, 1, 1]))
+
+        # Stack the individual grids into a single batch tensor
+        gridx = torch.cat(gridx_list, dim=0)
+        gridy = torch.cat(gridy_list, dim=0)
+        gridz = torch.cat(gridz_list, dim=0)
+
+        grid=torch.cat((gridx, gridy, gridz), dim=-1)
+        return grid
+    '''

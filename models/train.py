@@ -9,15 +9,18 @@ import h5py
 import json
 import horovod.torch as hvd # for multi GPU
 import argparse
+from data_loader import GeologyTracesSourceMaskDataset
 
 from utils_models import get_device, get_batch_size, loss_criterion, RunningAverage, EarlyStopper
 from ffno_model import FFNO_3D
 from mifno_model import MIFNO_3D
-from dataloaders import GeologyTracesSourceDataset
+from maskfno_model import maskMIFNO_3D
+import wandb
+
 
 
 parser = argparse.ArgumentParser(prefix_chars='@')
-parser.add_argument('@model_type', type=str, default="MIFNO", help="Architecture used: MIFNO or F-FNO")
+parser.add_argument('@model_type', type=str, default="maskMIFNO", help="Architecture used: MIFNO or F-FNO")
 parser.add_argument('@S_in', type=int, default=32, help="Size of the spatial input grid")
 parser.add_argument('@S_in_z', type=int, default=32, help="Size of the spatial input grid")
 parser.add_argument('@S_out', type=int, default=32, help="Size of the spatial output grid")
@@ -42,15 +45,17 @@ parser.add_argument('@padding', type=int, default=0, help = "Number of pixels fo
 parser.add_argument('@epochs', type=int, default=350, help = 'Number of epochs')
 parser.add_argument('@learning_rate', type=float, default=0.0006, help='learning rate')
 parser.add_argument('@loss_weights', type=float, nargs='+', default = [1.0, 0.0], help = "Weight of L1 loss, L2 loss")
-parser.add_argument('@dir_data_train', type=str, nargs='+', default=['../data/formatted/HEMEWS3D_S32_Z32_T320_fmax5_rot0_train'], help="Name of folders with training data")
-parser.add_argument('@dir_data_val', type=str, nargs='+', default=['../data/formatted/HEMEWS3D_S32_Z32_T320_fmax5_rot0_val'], help="Name of folders with training data")
-parser.add_argument('@dir_logs', type=str, default='../logs/', help="Path to folder to store loss and models")
+parser.add_argument('@dir_data_train', type=str, nargs='+', default=['HEMEWS3D_S32_Z32_T320_fmax5_rot0_train'], help="Name of folders with training data")
+parser.add_argument('@dir_data_val', type=str, nargs='+', default=['HEMEWS3D_S32_Z32_T320_fmax5_rot0_val'], help="Name of folders with training data")
+parser.add_argument('@dir_logs', type=str, default='/lustre/fsn1/projects/rech/xvy/upz57sx/MIFNO_logs/', help="Path to folder to store loss and models")
 parser.add_argument('@additional_name', type=str, default="", help="string to add to the configuration name for saved outputs")
-parser.add_argument('@restart_model', type=str, default="", help="Path to the model to use as initialization")
+parser.add_argument('@restart_model', type=str, default='', help="Path to the model to use as initialization")
 parser.add_argument('@start_epoch', type=int, default=0, help="Epoch to start, >0 if initializing with a trained model")
 parser.add_argument('@seed', type=int, default=0, help="Seed to initialize pytorch")
 options = parser.parse_args().__dict__
 
+
+wandb.login()
 # increase the reproducibility between devices and runs
 torch.manual_seed(options['seed'])
 torch.backends.cudnn.benchmark = False
@@ -89,6 +94,7 @@ S_in_z = options['S_in_z']
 S_out = options['S_out']
 T_out = options['T_out']
 padding = options['padding']
+branching_index = options['branching_index']
 
 
 
@@ -99,16 +105,37 @@ if __name__ == '__main__':
         torch.cuda.set_device(hvd.local_rank())
     verbose = 2 if hvd.rank() == 0 else 0
 
-    train_data = GeologyTracesSourceDataset(options['dir_data_train'], S_in=S_in, S_in_z=S_in_z,
-                                            S_out=S_out, T_out=T_out,
-                                            transform_a='normal', N=Ntrain, orientation=source_orientation, 
-                                            transform_position=transform_position, transform_angle='unit',
-                                            transform_traces=normalize_traces)
-    val_data = GeologyTracesSourceDataset(options['dir_data_val'], S_in=S_in, S_in_z=S_in_z,
-                                          S_out=S_out, T_out=T_out,
-                                          transform_a='normal', N=Nval, orientation=source_orientation,
-                                          transform_position=transform_position, transform_angle='unit',
-                                          transform_traces=normalize_traces)
+    train_data = GeologyTracesSourceMaskDataset(
+    path_data='/lustre/fsn1/projects/rech/xvy/upz57sx/hemews3d/formatted/',
+    #path_data='./data/formatted/',
+    dir_data=options['dir_data_train'],
+    S_in=options['S_in'],
+    S_in_z=options['S_in_z'],
+    S_out=options['S_out'],
+    T_out=options['T_out'],
+    transform_a='normal',
+    N=options['Ntrain'],
+    orientation=options['source_orientation'],
+    transform_position=[9600, 9600, 9600],
+    transform_angle='unit',
+    transform_traces=None
+    )
+    
+    val_data = GeologyTracesSourceMaskDataset(
+    path_data='/lustre/fsn1/projects/rech/xvy/upz57sx/hemews3d/formatted/',
+    #path_data='./data/formatted/',
+    dir_data=options['dir_data_val'],
+    S_in=options['S_in'],
+    S_in_z=options['S_in_z'],
+    S_out=options['S_out'],
+    T_out=options['T_out'],
+    transform_a='normal',
+    N=options['Ntrain'],
+    orientation=options['source_orientation'],
+    transform_position=[9600, 9600, 9600],
+    transform_angle='unit',
+    transform_traces=None
+    )
         
     train_sampler = torch.utils.data.distributed.DistributedSampler(train_data,
                                                                     shuffle=True,
@@ -134,12 +161,14 @@ if __name__ == '__main__':
     device = get_device()
 
     dv = options['dv']
+    
     list_D1 = np.array(options['list_D1']).astype(int)
     list_D2 = np.array(options['list_D2']).astype(int)
     list_D3 = np.array(options['list_D3']).astype(int)
     list_M1 = np.array(options['list_M1']).astype(int)
     list_M2 = np.array(options['list_M2']).astype(int)
     list_M3 = np.array(options['list_M3']).astype(int)
+    
 
     assert nlayers == list_D1.shape[0]
 
@@ -199,8 +228,29 @@ if __name__ == '__main__':
 
         else:
             raise Exception(f"source {source_orientation} is not defined")
+    if model_type == 'maskMIFNO':
+            if source_orientation == 'angle':
+                input_dim = 4  # a, x, y, z
+                output_dim = 1
+                source_dim = 6  # 3 coordinates + 3 angles
+                model = maskMIFNO_3D(list_D1, list_D2, list_D3,
+                            list_M1, list_M2, list_M3, dv,
+                            input_dim=input_dim, output_dim=output_dim,source_dim=source_dim,
+                            n_layers=nlayers, branching_index=branching_index, padding=padding
+            )
+
+            elif source_orientation == 'moment':
+                input_dim = 4  # a, x, y, z
+                output_dim = 1
+                source_dim = 9  # 3 coordinates + 6 moment tensor components
+                model = maskMIFNO_3D(list_D1, list_D2, list_D3,
+                            list_M1, list_M2, list_M3, dv,
+                            input_dim=input_dim, output_dim=output_dim,source_dim=source_dim,
+                            n_layers=nlayers, branching_index=branching_index, padding=padding
+                )
     
-    
+    model.cuda()
+    print(f'hvd.rank()', hvd.rank())
     if hvd.rank() == 0:
         if model_type == 'MIFNO':
             with open(f"{dir_logs}models/architecture-{name_config}-epochs{epochs}.json", mode='w', encoding='utf-8') as param_file:
@@ -272,7 +322,41 @@ if __name__ == '__main__':
                            }
                 }, param_file)
 
-    
+        if model_type == 'maskMIFNO':
+            with open(f"{dir_logs}models/architecture-{name_config}-epochs{epochs}.json", mode='w', encoding='utf-8') as param_file:
+                json.dump({'architecture':{'model type':model_type,
+                                           'input dim':input_dim,
+                                           'output dim':output_dim,
+                                           'nlayers':nlayers,
+                                           'source dim':source_dim,
+                                           'branching index':branching_index,
+                                           'list dv':list(list_dv.astype(float)),
+                                           'list D1':list(list_D1.astype(float)),
+                                           'list D2':list(list_D2.astype(float)),
+                                           'list D3':list(list_D3.astype(float)),
+                                           'list M1':list(list_M1.astype(float)),
+                                           'list M2':list(list_M2.astype(float)),
+                                           'list M3':list(list_M3.astype(float)),
+                                           'padding':padding},
+                           
+                           'optimization':{'weight decay':weight_decay,
+                                           'patience':patience,
+                                           'epochs':epochs,
+                                           'learning rate':learning_rate,
+                                           'loss weights (L1, L2)':loss_weights
+                           },
+                           
+                           'data':{'Ntrain':Ntrain,
+                                   'Nval':Nval,
+                                   'batch size':batch_size,
+                                   'source orientation':source_orientation,
+                                   'normalize source':normalize_source,
+                                   'transform position':transform_position,
+                                   'normalize traces':normalize_traces,
+                                   'data train':options['dir_data_train'],
+                                   'data val':options['dir_data_val']
+                           }
+                }, param_file)
     if restart_model != "": # initialize weights with a trained model
         model.load_state_dict(torch.load(restart_model, map_location=device))
         if verbose:
@@ -302,10 +386,12 @@ if __name__ == '__main__':
     ### OPTIMIZER
     optimizer = optim.Adam(model.parameters(), lr=learning_rate*hvd.size(), betas=(0.9, 0.999))
     optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=model.named_parameters())
-    lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.5, patience=10, verbose=True) 
+    lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.5, patience=10) 
     early_stopper = EarlyStopper(patience=patience, min_delta=0.0001)
-
     
+    hvd.broadcast_parameters(model.state_dict(), root_rank=0)
+    hvd.broadcast_optimizer_state(optimizer, root_rank=0)
+
     ### TRAINING       
     for ep in range(start_epoch, epochs):
         t1 = timeit.default_timer()
@@ -320,8 +406,10 @@ if __name__ == '__main__':
             uN = _[2].to(device)
             uZ = _[3].to(device)
             s = _[4].to(device)
+            grid_bounds = _[5].to(device)
+            norm_cst = _[6].to(device)
             
-            outE, outN, outZ = model(a, s)
+            outE, outN, outZ = model(a, s, grid_bounds)
             loss_rel = loss_criterion((outE,outN,outZ), (uE,uN,uZ), loss_weights, relative=True)
             loss_abs = loss_criterion((outE,outN,outZ), (uE,uN,uZ), loss_weights, relative=False)
             
@@ -337,6 +425,7 @@ if __name__ == '__main__':
         train_history['loss_absolute'].append(train_losses_absolute.avg)
 
         # validation
+        '''
         if hvd.rank() == 0:
             model.eval()
             with torch.no_grad():
@@ -350,7 +439,9 @@ if __name__ == '__main__':
                     uN = _[2].to(device)
                     uZ = _[3].to(device)
                     s = _[4].to(device)
-                    outE, outN, outZ = model(a, s)
+                    grid_bounds = _[5].to(device)
+                    norm_cst = _[6].to(device)
+                    outE, outN, outZ = model(a, s, grid_bounds)
                     loss_rel_val = loss_criterion((outE,outN,outZ), (uE,uN,uZ), loss_weights, relative=True)
                     loss_abs_val = loss_criterion((outE,outN,outZ), (uE,uN,uZ), loss_weights, relative=False)
                     
@@ -373,7 +464,73 @@ if __name__ == '__main__':
    
             if early_stopper.early_stop(val_losses_relative.avg):
                 break
+            '''        
+        '''
+        val_losses_relative = RunningAverage()
+        val_losses_absolute = RunningAverage()
+        if hvd.rank() == 0:
+            model.eval()
+            with torch.no_grad():
+                # Iterate through validation loader
+                for _ in val_loader:
+                    a, uE, uN, uZ, s, grid_bounds, norm_cst = [x.to(device) for x in _]
+                    outE, outN, outZ = model(a, s, grid_bounds)
+                    loss_rel_val = loss_criterion((outE,outN,outZ), (uE,uN,uZ), loss_weights, relative=True)
+                    loss_abs_val = loss_criterion((outE,outN,outZ), (uE,uN,uZ), loss_weights, relative=False)
+                    
+                    val_losses_relative.update(loss_rel_val.item(), get_batch_size(a))
+                    val_losses_absolute.update(loss_abs_val.item(), get_batch_size(a))
 
+                val_history['loss_relative'].append(val_losses_relative.avg)
+                val_history['loss_absolute'].append(val_losses_absolute.avg)
+
+        # Broadcast the validation loss from rank 0 to all other ranks to sync them up
+        # This forces all ranks to wait until rank 0 is done with validation.
+        val_loss_tensor = torch.tensor(val_losses_relative.avg, device=device)
+        hvd.broadcast_(val_loss_tensor, root_rank=0)
+        '''
+        val_loss = 0.0
+        if hvd.rank() == 0:
+            model.eval()
+            val_losses_relative = RunningAverage()
+            val_losses_absolute = RunningAverage()
+            with torch.no_grad():
+                # Iterate through validation loader
+                for _ in val_loader:
+                    a, uE, uN, uZ, s, grid_bounds, norm_cst = [x.to(device) for x in _]
+                    outE, outN, outZ = model(a, s, grid_bounds)
+                    loss_rel_val = loss_criterion((outE,outN,outZ), (uE,uN,uZ), loss_weights, relative=True)
+                    loss_abs_val = loss_criterion((outE,outN,outZ), (uE,uN,uZ), loss_weights, relative=False)
+                    
+                    val_losses_relative.update(loss_rel_val.item(), get_batch_size(a))
+                    val_losses_absolute.update(loss_abs_val.item(), get_batch_size(a))
+
+            val_history['loss_relative'].append(val_losses_relative.avg)
+            val_history['loss_absolute'].append(val_losses_absolute.avg)
+            val_loss = val_losses_relative.avg
+
+        # Broadcast the validation loss from rank 0 to all other ranks to sync them up
+        val_loss_tensor = torch.tensor(val_loss, device=device)
+        hvd.broadcast_(val_loss_tensor, root_rank=0)
+        
+        # All ranks update their learning rate scheduler based on the broadcasted value
+        lr_scheduler.step(val_loss_tensor.item())
+
+        # All ranks check for early stopping
+        if early_stopper.early_stop(val_loss_tensor.item()):
+            break # All ranks will break the loop together
+
+        # Logging and saving models are still done only on rank 0
+        if hvd.rank() == 0:
+            t2 = timeit.default_timer()
+            print(f'Epoch {ep+1}/{epochs}: {t2-t1:.2f}s - Training loss = {train_losses_relative.avg:.5f} - Validation loss = {val_losses_relative.avg:.5f}'\
+                  f' - Training accuracy = {train_losses_absolute.avg:.5f} - Validation accuracy = {val_losses_absolute.avg:.5f}')
+
+            # save the model
+            if val_losses_relative.avg < best_loss:
+                best_loss = val_losses_relative.avg
+                torch.save(model.state_dict(), f'{dir_logs}models/bestmodel-{name_config}-epochs{epochs}.pt')
+   
             # save intermediate losses
             if ep%2==0:
                 with h5py.File(f'{dir_logs}loss/loss-{name_config}-epoch{ep}on{epochs}.h5', 'w') as f:
