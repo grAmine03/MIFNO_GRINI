@@ -327,15 +327,15 @@ class maskMIFNO_3D(nn.Module):
 
         ### END PROJECTIONS
         self.QE = nn.Sequential(
-            WNLinear(3*self.width, 128, wnorm=ff_weight_norm),
+            WNLinear(3*self.width+3, 128, wnorm=ff_weight_norm),
             WNLinear(128, output_dim, wnorm=ff_weight_norm))
         
         self.QN = nn.Sequential(
-            WNLinear(3*self.width, 128, wnorm=ff_weight_norm),
+            WNLinear(3*self.width+3, 128, wnorm=ff_weight_norm),
             WNLinear(128, output_dim, wnorm=ff_weight_norm))
         
         self.QZ = nn.Sequential(
-            WNLinear(3*self.width, 128, wnorm=ff_weight_norm),
+            WNLinear(3*self.width+3, 128, wnorm=ff_weight_norm),
             WNLinear(128, output_dim, wnorm=ff_weight_norm))
         
 
