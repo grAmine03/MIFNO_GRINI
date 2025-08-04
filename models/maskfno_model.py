@@ -328,21 +328,25 @@ class maskMIFNO_3D(nn.Module):
         ### END PROJECTIONS
         self.QE = nn.Sequential(
             WNLinear(3*self.width+3, 128, wnorm=ff_weight_norm),
+            #nn.ReLU(), #Added ReLU activation
             WNLinear(128, output_dim, wnorm=ff_weight_norm))
         
         self.QN = nn.Sequential(
             WNLinear(3*self.width+3, 128, wnorm=ff_weight_norm),
+            #nn.ReLU(), #Added ReLU activation
             WNLinear(128, output_dim, wnorm=ff_weight_norm))
         
         self.QZ = nn.Sequential(
             WNLinear(3*self.width+3, 128, wnorm=ff_weight_norm),
+            #nn.ReLU(), #Added ReLU activation
             WNLinear(128, output_dim, wnorm=ff_weight_norm))
         
 
     def forward(self, x, s, grid_bounds):
         ''' x: geology, s: source '''
-        grid_bounds_P = grid_bounds[:2] + [0] + grid_bounds[3:4] + [1]
-        print(f'grid_bounds_P: {grid_bounds_P}')
+        grid_bounds_P = grid_bounds.clone()
+        grid_bounds_P[:, 2] = 0  # t_min
+        grid_bounds_P[:, 5] = 1  # t_max
         grid = self.get_grid(x.shape, x.device, grid_bounds_P)
         #print(fanny)
         x = torch.cat((x, grid), dim=-1)

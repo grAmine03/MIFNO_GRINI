@@ -78,7 +78,7 @@ dist.init_process_group(backend='nccl',
 torch.cuda.set_device(idr_torch.local_rank)
 gpu = torch.device("cuda")
 
-wandb.init()
+
 
 # LightningModule for the model
 class GeologyModel(LightningModule):
@@ -228,10 +228,10 @@ class GeologyModel(LightningModule):
                 total_norm += param_norm.item() ** 2
         total_norm = total_norm ** 0.5
         
-        
+        self.log("grad_norm", total_norm)
         # Log metrics to Wandb
-        wandb.log({"train_loss": loss_rel.item()})
-        wandb.log({"grad_norm": total_norm})
+        #wandb.log({"train_loss": loss_rel.item()})
+        #wandb.log({"grad_norm": total_norm})
 
         return loss_rel
 
@@ -246,7 +246,7 @@ class GeologyModel(LightningModule):
         self.log('val_loss', loss_rel, on_step=False, on_epoch=True, prog_bar=True)
 
         # Log metrics to Wandb
-        wandb.log({"val_loss": loss_rel.item()})
+        #wandb.log({"val_loss": loss_rel.item()})
 
         if self.trainer.is_global_zero and self.current_epoch % self.hparams.options.log_plot_every_n_epochs == 0 and batch_idx == 0: # Log only for the first batch to avoid too many plots
              self.log_validation_plots(batch, outE, outN, outZ)
@@ -376,7 +376,7 @@ if __name__ == '__main__':
     assert options.nlayers == len(options.list_D1)
 
 
-    name_config = f"JeanZay_RandBounds-"\
+    name_config = f"JeanZay_FixedBounds-"\
         f"{options.model_type}3D-{options.source_orientation}-"\
         f"dv{options.dv}-{options.nlayers}layers-S{options.S_in}-T{options.T_out}-"\
         f"learningrate{str(options.learning_rate).replace('.','p')}-Ntrain{options.Ntrain}-"\
@@ -607,7 +607,10 @@ if __name__ == '__main__':
         title_prefix=f"Final Comparison (uE) at y-index {y_index}"
     )
     # Log the combined plot to Wandb
-    wandb.log({"final_plot/comparison_E": wandb.Image(fig_comparison_final)})
+    if wandb_logger:
+        wandb_logger.experiment.log({"final_plot/comparison_E": wandb.Image(fig_comparison_final)})
+   
+    #wandb.log({"final_plot/comparison_E": wandb.Image(fig_comparison_final)})
     plt.close(fig_comparison_final) # Close the figure after logging
     '''
     # Plot ground truth and log to Wandb
@@ -623,5 +626,5 @@ if __name__ == '__main__':
     plt.close(fig_pred_final)
     '''
     print("Plotting complete.")
-    wandb.finish() # Ensure Wandb run finishes after logging plots
+    #wandb.finish() # Ensure Wandb run finishes after logging plots
 
