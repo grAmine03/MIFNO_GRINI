@@ -26,6 +26,10 @@ import idr_torch
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 
+
+torch.set_float32_matmul_precision('high') 
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--model_type', type=str, default="maskMIFNO", help="Architecture used: MIFNO or F-FNO")
 parser.add_argument('--S_in', type=int, default=32, help="Size of the spatial input grid")
@@ -220,7 +224,7 @@ class GeologyModel(LightningModule):
 
         # Compute loss
         loss_rel = self.loss_criterion((outE, outN, outZ), (uE, uN, uZ), self.loss_weights, relative=True)
-        self.log('train_loss', loss_rel, on_step=False, on_epoch=True, prog_bar=True)
+        self.log('train_loss', loss_rel, on_step=False, on_epoch=True, prog_bar=True, sync_dist=True)
         total_norm = 0
         for p in self.parameters():
             if p.grad is not None:
@@ -243,7 +247,8 @@ class GeologyModel(LightningModule):
        
         # Compute loss
         loss_rel = self.loss_criterion((outE, outN, outZ), (uE, uN, uZ), self.loss_weights, relative=True)
-        self.log('val_loss', loss_rel, on_step=False, on_epoch=True, prog_bar=True)
+        self.log('val_loss', loss_rel, on_step=False, on_epoch=True, prog_bar=True, sync_dist=True)
+
 
         # Log metrics to Wandb
         #wandb.log({"val_loss": loss_rel.item()})
@@ -376,7 +381,7 @@ if __name__ == '__main__':
     assert options.nlayers == len(options.list_D1)
 
 
-    name_config = f"JeanZay_FixedBounds-"\
+    name_config = f"JeanZayTEnc_RandBounds-"\
         f"{options.model_type}3D-{options.source_orientation}-"\
         f"dv{options.dv}-{options.nlayers}layers-S{options.S_in}-T{options.T_out}-"\
         f"learningrate{str(options.learning_rate).replace('.','p')}-Ntrain{options.Ntrain}-"\

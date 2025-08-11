@@ -7,10 +7,10 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+import math
 from utils_ffno import FeedForward, WNLinear
 
-
+import random
 
 class FactorizedSpectralConv3d(nn.Module):
     def __init__(self, in_dim, out_dim, D1, D2, D3, modes_x, modes_y, modes_z, forecast_ff, backcast_ff,
@@ -221,12 +221,32 @@ class ModifyDimensions3d(nn.Module):
 
         return x_out
 
-
+class ShallowTemporalEncoding(nn.Module):
+    def __init__(self, embedding_dim: int, max_time_steps=4096):
+        super(ShallowTemporalEncoding, self).__init__()
+        self.embedding_dim = embedding_dim
+ 
+        # Create a fixed sinusoidal positional encoding matrix
+        pe = torch.zeros(max_time_steps, embedding_dim)
+        position = torch.arange(0, max_time_steps, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, embedding_dim, 2).float() * (-math.log(10000.0) / embedding_dim))
+ 
+        pe[:, 0::2] = torch.sin(position * div_term)  # even indices
+        pe[:, 1::2] = torch.cos(position * div_term)  # odd indices
+ 
+        self.register_buffer('pe', pe)
+ 
+    def forward(self, time_indices):
+        """
+        time_indices: Tensor of shape (batch_size,) or (batch_size, seq_len)
+        Returns: Tensor of shape (batch_size, embedding_dim) or (batch_size, seq_len, embedding_dim)
+        """
+        return self.pe[time_indices]
 
 class maskMIFNO_3D(nn.Module):
     def __init__(self, list_D1, list_D2, list_D3, list_M1, list_M2, list_M3, width, input_dim, output_dim, source_dim=3,
                  branching_index=4, n_layers=4, factor=4, ff_weight_norm=True, n_ff_layers=2, layer_norm=False, padding=8,
-                 sharedXY = False, dropout=0.0):
+                 sharedXY = False, dropout=0.0, time_emb_dim: int = 16):
         super().__init__()
         self.padding = padding # pad the domain if input is non-periodic
         self.width = width
@@ -240,6 +260,9 @@ class maskMIFNO_3D(nn.Module):
         self.list_D3 = np.array(list_D3) # do not pad the vertical dimension
         self.sharedXY = sharedXY
         self.dropout = dropout
+        self.time_emb_dim = time_emb_dim
+        self.time_encoding = ShallowTemporalEncoding(self.time_emb_dim, max_time_steps=4096)
+
 
         self.branching_index = branching_index
         
@@ -327,26 +350,27 @@ class maskMIFNO_3D(nn.Module):
 
         ### END PROJECTIONS
         self.QE = nn.Sequential(
-            WNLinear(3*self.width+3, 128, wnorm=ff_weight_norm),
-            #nn.ReLU(), #Added ReLU activation
+            WNLinear(3*self.width + self.time_emb_dim, 128, wnorm=ff_weight_norm),
             WNLinear(128, output_dim, wnorm=ff_weight_norm))
         
         self.QN = nn.Sequential(
-            WNLinear(3*self.width+3, 128, wnorm=ff_weight_norm),
-            #nn.ReLU(), #Added ReLU activation
+            WNLinear(3*self.width + self.time_emb_dim, 128, wnorm=ff_weight_norm),
             WNLinear(128, output_dim, wnorm=ff_weight_norm))
         
         self.QZ = nn.Sequential(
-            WNLinear(3*self.width+3, 128, wnorm=ff_weight_norm),
-            #nn.ReLU(), #Added ReLU activation
+            WNLinear(3*self.width + self.time_emb_dim, 128, wnorm=ff_weight_norm),
             WNLinear(128, output_dim, wnorm=ff_weight_norm))
         
 
     def forward(self, x, s, grid_bounds):
         ''' x: geology, s: source '''
         grid_bounds_P = grid_bounds.clone()
-        grid_bounds_P[:, 2] = 0  # t_min
-        grid_bounds_P[:, 5] = 1  # t_max
+        z_bound = int(2 * self.transform_position[2])
+        z_vals = list(range(0, z_bound + 1, 300))
+        zmin_grid, zmax_grid = sorted(random.sample(z_vals, 2))
+
+        grid_bounds_P[:, 2] = zmin_grid # z_min
+        grid_bounds_P[:, 5] = zmax_grid # z_max
         grid = self.get_grid(x.shape, x.device, grid_bounds_P)
         #print(fanny)
         x = torch.cat((x, grid), dim=-1)
@@ -385,11 +409,12 @@ class maskMIFNO_3D(nn.Module):
         yf = b
         yf = yf.permute(0, 2, 3, 4, 1)
 
-        grid_bounds_Q = grid_bounds
-        new_grid=self.get_grid(yf.shape, yf.device, grid_bounds_Q)
-        yf = torch.cat((yf, new_grid), dim=-1)
-        
-        
+        B, X, Y, T, _ = yf.shape
+        time_idx = torch.arange(T, device=yf.device).unsqueeze(0).expand(B, -1)  # (B, T)
+        t_enc = self.time_encoding(time_idx)  # (B, T, E)
+        t_enc = t_enc.unsqueeze(1).unsqueeze(1).expand(B, X, Y, T, self.time_emb_dim)  # (B, X, Y, T, E)
+
+        yf = torch.cat((yf, t_enc), dim=-1)
         uE = self.QE(yf)
         uN = self.QN(yf)
         uZ = self.QZ(yf)

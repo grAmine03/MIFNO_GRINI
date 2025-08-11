@@ -159,12 +159,12 @@ class GeologyTracesSourceMaskDataset(Dataset):
         ymin = self.mask.loc[idx, 'ymin']
         
         '''
-        
+        '''
         xmin_grid = 0
         ymin_grid = 0
         xmax_grid = 9600
         ymax_grid = 9600
-        
+        '''
         # normalized mask for the grid position
         
         xmin_grid = xmin_grid/self.transform_position[0]
