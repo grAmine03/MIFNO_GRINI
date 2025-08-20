@@ -151,34 +151,37 @@ class GeologyTracesSourceMaskDataset(Dataset):
 
         # Randomly select ymin and ymax such that ymin < ymax
         ymin_grid, ymax_grid = sorted(random.sample(y_vals, 2))
-        
-        
-        
+
+        # Randomly select zmin and zmax such that zmin < zmax
+        zmin_grid, zmax_grid = sorted(random.sample(z_vals, 2))
+
         '''
         xmin = self.mask.loc[idx, 'xmin']
         ymin = self.mask.loc[idx, 'ymin']
         
         '''
-        '''
+        
         xmin_grid = 0
         ymin_grid = 0
+        zmin_grid = 0
         xmax_grid = 9600
-        ymax_grid = 9600
-        '''
+        ymax_grid = 9600 
+        zmax_grid = 9600
+        
+        
         # normalized mask for the grid position
         
         xmin_grid = xmin_grid/self.transform_position[0]
         ymin_grid = ymin_grid/self.transform_position[1]
         xmax_grid = xmax_grid/self.transform_position[0]
         ymax_grid = ymax_grid/self.transform_position[0]
-        
+        zmin_grid = zmin_grid/self.transform_position[2]
+        zmax_grid = zmax_grid/self.transform_position[2]
 
         
         tmin_grid = 0
         tmax_grid = 320
-        grid_bounds = np.array([xmin_grid, ymin_grid, tmin_grid, xmax_grid, ymax_grid, tmax_grid], dtype=np.float32)        
-        print(f'\n \nin data loader: idx={idx}')
-        print(f'in data loader: xmin_grid={xmin_grid:.3f}, ymin_grid={ymin_grid:.3f}, xmax_grid={xmax_grid:.3f}, ymax_grid={ymax_grid:.3f}')
+        grid_bounds = np.array([xmin_grid, ymin_grid, zmin_grid, xmax_grid, ymax_grid, zmax_grid, tmin_grid, tmax_grid], dtype=np.float32)
         
         if 's' in f.keys():
             s_raw = f['s'][:]
@@ -202,8 +205,7 @@ class GeologyTracesSourceMaskDataset(Dataset):
         else:
             s = s_raw
         s = s.astype(np.float32)
-        print(f'in data loader: original source ({f["s"][0]}, {f["s"][1]}, {f["s"][2]}) - normalized source position in mask ({s[0]:.3f}, {s[1]:.3f}, {s[2]:.3f})')
-        
+       
         if self.orientation == 'angle':
             if 'angle' in f.keys():
                 ang = f['angle'][:].astype(np.float32)

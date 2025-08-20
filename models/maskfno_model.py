@@ -263,7 +263,12 @@ class maskMIFNO_3D(nn.Module):
         self.time_emb_dim = time_emb_dim
         self.time_encoding = ShallowTemporalEncoding(self.time_emb_dim, max_time_steps=4096)
 
-
+        # Project T-branch (time) to trunk feature width (C = 3*width)
+        self.time_proj = WNLinear(self.time_emb_dim, 3*self.width, wnorm=ff_weight_norm)
+        # Learnable mixing coefficients (scalar). You can make them per-channel if desired.
+        self.alpha = nn.Parameter(torch.tensor(1.0))
+        self.beta  = nn.Parameter(torch.tensor(1.0))
+        
         self.branching_index = branching_index
         
         self.P = WNLinear(input_dim, self.width, wnorm=ff_weight_norm)
@@ -350,29 +355,23 @@ class maskMIFNO_3D(nn.Module):
 
         ### END PROJECTIONS
         self.QE = nn.Sequential(
-            WNLinear(3*self.width + self.time_emb_dim, 128, wnorm=ff_weight_norm),
+            WNLinear(3*self.width, 128, wnorm=ff_weight_norm),
             WNLinear(128, output_dim, wnorm=ff_weight_norm))
         
         self.QN = nn.Sequential(
-            WNLinear(3*self.width + self.time_emb_dim, 128, wnorm=ff_weight_norm),
+            WNLinear(3*self.width, 128, wnorm=ff_weight_norm),
             WNLinear(128, output_dim, wnorm=ff_weight_norm))
         
         self.QZ = nn.Sequential(
-            WNLinear(3*self.width + self.time_emb_dim, 128, wnorm=ff_weight_norm),
+            WNLinear(3*self.width, 128, wnorm=ff_weight_norm),
             WNLinear(128, output_dim, wnorm=ff_weight_norm))
         
 
     def forward(self, x, s, grid_bounds):
         ''' x: geology, s: source '''
         grid_bounds_P = grid_bounds.clone()
-        z_bound = int(2 * self.transform_position[2])
-        z_vals = list(range(0, z_bound + 1, 300))
-        zmin_grid, zmax_grid = sorted(random.sample(z_vals, 2))
-
-        grid_bounds_P[:, 2] = zmin_grid # z_min
-        grid_bounds_P[:, 5] = zmax_grid # z_max
         grid = self.get_grid(x.shape, x.device, grid_bounds_P)
-        #print(fanny)
+        #print(fanny)S
         x = torch.cat((x, grid), dim=-1)
         x = self.P(x)
 
@@ -410,18 +409,18 @@ class maskMIFNO_3D(nn.Module):
         yf = yf.permute(0, 2, 3, 4, 1)
 
         B, X, Y, T, _ = yf.shape
-        time_idx = torch.arange(T, device=yf.device).unsqueeze(0).expand(B, -1)  # (B, T)
-        t_enc = self.time_encoding(time_idx)  # (B, T, E)
+        time_idx = torch.arange(T, device=yf.device).unsqueeze(0).expand(B, -1)        # (B, T)
+        t_enc = self.time_encoding(time_idx)                                           # (B, T, E)
         t_enc = t_enc.unsqueeze(1).unsqueeze(1).expand(B, X, Y, T, self.time_emb_dim)  # (B, X, Y, T, E)
 
-        yf = torch.cat((yf, t_enc), dim=-1)
-        uE = self.QE(yf)
-        uN = self.QN(yf)
-        uZ = self.QZ(yf)
+        t_bias = self.time_proj(t_enc)  # (B, X, Y, T, C)
+        fused = self.alpha * yf + self.beta * t_bias  # purely linear fusion
 
+        uE = self.QE(fused)
+        uN = self.QN(fused)
+        uZ = self.QZ(fused)
         return uE, uN, uZ
 
-    
     def get_grid(self, shape, device, grid_bounds):
         # Assuming grid_bounds might be used later, keeping it for now
         #xmin_grid, ymin_grid, xmax_grid, ymax_grid = grid_bounds

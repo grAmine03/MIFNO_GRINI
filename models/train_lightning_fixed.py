@@ -9,13 +9,13 @@ from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 from torchmetrics import MeanMetric
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+import os
 import wandb
 from pytorch_lightning.loggers import WandbLogger
 import matplotlib.pyplot as plt
 import random
 import io # Add io import
 from PIL import Image # Add PIL import
-import os
 from utils_models import get_device, get_batch_size, loss_criterion, RunningAverage
 from ffno_model import FFNO_3D
 from mifno_model import MIFNO_3D
@@ -25,7 +25,7 @@ from dataloaders import GeologyTracesSourceDataset
 import idr_torch
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
-
+import pkg_resources
 
 torch.set_float32_matmul_precision('high') 
 
@@ -81,6 +81,20 @@ dist.init_process_group(backend='nccl',
                         rank=idr_torch.rank)
 torch.cuda.set_device(idr_torch.local_rank)
 gpu = torch.device("cuda")
+
+
+
+
+
+
+try:
+    for d in pkg_resources.working_set:
+        if d.metadata is None:
+            print(f"Package {d} has no metadata")
+        elif d.metadata.get("Name") is None:
+            print(f"Package {d} has no Name in metadata")
+except Exception as e:
+    print(f"Error checking packages: {e}")
 
 
 
@@ -381,7 +395,7 @@ if __name__ == '__main__':
     assert options.nlayers == len(options.list_D1)
 
 
-    name_config = f"JeanZayTEnc_RandBounds-"\
+    name_config = f"MovingWindow_FixedBounds-"\
         f"{options.model_type}3D-{options.source_orientation}-"\
         f"dv{options.dv}-{options.nlayers}layers-S{options.S_in}-T{options.T_out}-"\
         f"learningrate{str(options.learning_rate).replace('.','p')}-Ntrain{options.Ntrain}-"\
@@ -393,7 +407,7 @@ if __name__ == '__main__':
     name_config += options.additional_name
     
 
-    wandb.login()
+    #wandb.login()
 
     train_data = GeologyTracesSourceMaskDataset(
     path_data='/lustre/fsn1/projects/rech/xvy/upz57sx/hemews3d/formatted/',
@@ -504,7 +518,8 @@ if __name__ == '__main__':
         project='MaskMIFNO', 
         name=name_config,
         config=vars(options), # Pass all parsed options to Wandb config
-        save_dir="/lustre/fsn1/projects/rech/xvy/upz57sx/MIFNO_logs/"
+        save_dir="/lustre/fsn1/projects/rech/xvy/upz57sx/MIFNO_logs/",
+        log_model=False  # Set to False to avoid logging the model itself
     )
     trainer = Trainer(
         max_epochs=options.epochs,
